@@ -1942,38 +1942,88 @@ function formatWarningTime(timeStr) {
 }
 
 function toggleCitySelection(cityName) {
-  if (selectedMarkerCity === cityName) {
-    selectedMarkerCity = null;
-  } else {
-    selectedMarkerCity = cityName;
-  }
+  const wasSelected = (selectedMarkerCity === cityName);
+  const prevCity = selectedMarkerCity;
+  selectedMarkerCity = wasSelected ? null : cityName;
+  activeCity = wasSelected ? null : cityName;
   
-  renderCityMarkers();
-  activeCity = cityName;
-  renderCityList();
+  // 局部更新地图标记样式（不全量重建）
+  updateMarkerVisual(prevCity);
+  updateMarkerVisual(selectedMarkerCity);
   
-  const allWarnings = getAllWarningsForCity(cityName);
-  if (allWarnings.length > 0) {
-    const marker = document.querySelector(`.city-marker[data-city="${cityName}"]`);
-    if (marker) {
-      showWarningDetail(cityName, marker);
+  // 局部更新列表active状态（不全量重建）
+  updateListActiveState(prevCity, selectedMarkerCity);
+  
+  if (!wasSelected) {
+    const allWarnings = getAllWarningsForCity(cityName);
+    if (allWarnings.length > 0) {
+      const marker = document.querySelector(`.city-marker[data-city="${cityName}"]`);
+      if (marker) {
+        showWarningDetail(cityName, marker);
+      }
+    } else {
+      hideWarningDetail();
+    }
+    
+    const item = document.querySelector(`.city-item[data-city="${cityName}"]`);
+    if (item) {
+      item.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   } else {
     hideWarningDetail();
   }
+}
+
+// 更新单个地图标记的视觉状态
+function updateMarkerVisual(cityName) {
+  if (!cityName) return;
+  const container = document.getElementById('cityMarkers');
+  const marker = container.querySelector(`.city-marker[data-city="${cityName}"]`);
+  if (!marker) return;
   
-  const item = document.querySelector(`.city-item[data-city="${cityName}"]`);
-  if (item) {
-    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const city = CITY_DATA[cityName];
+  if (!city) return;
+  const warnings = cityWarningData[city.qid]?.warning || [];
+  const hasWarning = warnings.length > 0;
+  const isSelected = (selectedMarkerCity === cityName);
+  
+  marker.setAttribute('class', `city-marker ${hasWarning ? 'has-warning' : ''} ${isSelected ? 'selected' : ''}`);
+  
+  const ring = marker.querySelector('.marker-ring');
+  if (ring) {
+    ring.setAttribute('stroke', isSelected ? '#06B6D4' : (hasWarning ? 'rgba(249,115,22,0.7)' : 'rgba(59,130,246,0.5)'));
+    ring.setAttribute('stroke-width', isSelected ? 3 : 1.5);
+  }
+  const inner = marker.querySelector('.inner');
+  if (inner) {
+    inner.setAttribute('stroke-width', isSelected ? 2.5 : 1.5);
+  }
+  const text = marker.querySelector('text');
+  if (text) {
+    text.setAttribute('fill', isSelected ? '#06B6D4' : '#E2E8F0');
+  }
+}
+
+// 局部更新列表active状态
+function updateListActiveState(prevCity, newCity) {
+  if (prevCity) {
+    const prevItem = document.querySelector(`.city-item[data-city="${prevCity}"]`);
+    if (prevItem) prevItem.classList.remove('active');
+  }
+  if (newCity) {
+    const newItem = document.querySelector(`.city-item[data-city="${newCity}"]`);
+    if (newItem) newItem.classList.add('active');
   }
 }
 
 function selectCity(cityName) {
+  const prevCity = activeCity;
   activeCity = cityName;
   selectedMarkerCity = cityName;
-
-  renderCityMarkers();
-  renderCityList();
+  
+  updateMarkerVisual(prevCity);
+  updateMarkerVisual(cityName);
+  updateListActiveState(prevCity, cityName);
   
   const item = document.querySelector(`.city-item[data-city="${cityName}"]`);
   if (item) {
