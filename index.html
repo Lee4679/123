@@ -1954,6 +1954,18 @@ function toggleCitySelection(cityName) {
   updateListActiveState(prevCity, selectedMarkerCity);
   
   if (!wasSelected) {
+    // 自动关联本省保单信息
+    const city = CITY_DATA[cityName];
+    if (city && city.props.length > 0) {
+      // 取第一个标的的省份作为该城市的省份
+      const province = city.props[0].province;
+      if (province) {
+        currentProvince = province;
+        document.getElementById('provinceFilter').value = province;
+        updateProvinceDetailPanel();
+      }
+    }
+    
     const allWarnings = getAllWarningsForCity(cityName);
     if (allWarnings.length > 0) {
       const marker = document.querySelector(`.city-marker[data-city="${cityName}"]`);
@@ -1970,6 +1982,8 @@ function toggleCitySelection(cityName) {
     }
   } else {
     hideWarningDetail();
+    // 取消选中时也刷新省份面板（保留当前省份筛选状态）
+    updateProvinceDetailPanel();
   }
 }
 
