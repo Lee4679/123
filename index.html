@@ -1470,113 +1470,137 @@ function formatTime(date) {
 function renderCityMarkers() {
   const container = document.getElementById('cityMarkers');
   
-  // 收集新的标记数据
-  const newMarkers = new Map();
-  
+  // 确定当前应该显示的城市集合
+  const visibleCities = new Set();
   Object.entries(CITY_DATA).forEach(([cityName, city]) => {
+    if (!CITY_SVG_POS[cityName]) return;
+    if (!isCityFiltered(cityName)) visibleCities.add(cityName);
+  });
+  
+  // 1. 隐藏不再应该显示的标记（平滑淡出）
+  container.querySelectorAll('.city-marker').forEach(marker => {
+    const cityName = marker.getAttribute('data-city');
+    if (!visibleCities.has(cityName)) {
+      if (marker.style.opacity !== '0') {
+        marker.style.transition = 'opacity 0.3s';
+        marker.style.opacity = '0';
+        setTimeout(() => { if (marker.parentNode) marker.remove(); }, 300);
+      }
+    }
+  });
+  
+  // 2. 更新已存在的标记（只改样式，不重建DOM）
+  visibleCities.forEach(cityName => {
+    const existing = container.querySelector(`.city-marker[data-city="${cityName}"]`);
+    const city = CITY_DATA[cityName];
     const pos = CITY_SVG_POS[cityName];
-    if (!pos) return;
-    
-    const isFiltered = isCityFiltered(cityName);
-    if (isFiltered) return;
-    
     const size = getMarkerSize(city.count);
     const warnings = cityWarningData[city.qid]?.warning || [];
     const hasWarning = warnings.length > 0;
     const isSelected = selectedMarkerCity === cityName;
     
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('class', `city-marker ${hasWarning ? 'has-warning' : ''} ${isSelected ? 'selected' : ''}`);
-    g.setAttribute('data-city', cityName);
-    g.setAttribute('transform', `translate(${pos.sx}, ${pos.sy})`);
-    
-    // 外圈光晕
-    if (hasWarning) {
-      const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      glow.setAttribute('class', 'marker-glow');
-      glow.setAttribute('cx', 0);
-      glow.setAttribute('cy', 0);
-      glow.setAttribute('r', 0);
-      glow.setAttribute('fill', 'rgba(249,115,22,0.6)');
+    if (existing) {
+      // 只更新需要变化的属性
+      const newClass = `city-marker ${hasWarning ? 'has-warning' : ''} ${isSelected ? 'selected' : ''}`;
+      if (existing.getAttribute('class') !== newClass) {
+        existing.setAttribute('class', newClass);
+      }
       
-      if (!isSelected) {
-        glow.innerHTML = `<animate attributeName="r" from="0" to="10" dur="3s" repeatCount="indefinite"/>
-                          <animate attributeName="opacity" from="0.5" to="0" dur="3s" repeatCount="indefinite"/>`;
-      } else {
-        glow.setAttribute('opacity', '0');
+      // 更新圆环颜色
+      const ring = existing.querySelector('.marker-ring');
+      if (ring) {
+        ring.setAttribute('stroke', isSelected ? '#06B6D4' : (hasWarning ? 'rgba(249,115,22,0.7)' : 'rgba(59,130,246,0.5)'));
+        ring.setAttribute('stroke-width', isSelected ? 3 : 1.5);
       }
-      g.appendChild(glow);
-    }
-    
-    // 外圈圆环
-    const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    ring.setAttribute('class', 'marker-ring');
-    ring.setAttribute('cx', 0);
-    ring.setAttribute('cy', 0);
-    ring.setAttribute('r', size + 2);
-    ring.setAttribute('fill', 'rgba(59,130,246,0.15)');
-    ring.setAttribute('stroke', isSelected ? '#06B6D4' : (hasWarning ? 'rgba(249,115,22,0.7)' : 'rgba(59,130,246,0.5)'));
-    ring.setAttribute('stroke-width', isSelected ? 3 : 1.5);
-    g.appendChild(ring);
-    
-    // 中心圆点
-    const inner = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    inner.setAttribute('class', 'inner');
-    inner.setAttribute('cx', 0);
-    inner.setAttribute('cy', 0);
-    inner.setAttribute('r', size);
-    inner.setAttribute('fill', hasWarning ? 'rgba(249,115,22,0.85)' : 'rgba(59,130,246,0.85)');
-    inner.setAttribute('stroke', hasWarning ? '#F97316' : '#3B82F6');
-    inner.setAttribute('stroke-width', isSelected ? 2.5 : 1.5);
-    g.appendChild(inner);
-    
-    // 城市名称
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', 0);
-    text.setAttribute('y', size + 10);
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('fill', isSelected ? '#06B6D4' : '#E2E8F0');
-    text.setAttribute('font-size', '8');
-    text.setAttribute('font-weight', '600');
-    text.textContent = cityName;
-    g.appendChild(text);
-    
-    // 鼠标事件
-    g.addEventListener('mouseenter', (e) => showTooltip(e, cityName));
-    g.addEventListener('mouseleave', hideTooltip);
-    g.addEventListener('click', () => toggleCitySelection(cityName));
-    
-    newMarkers.set(cityName, g);
-  });
-  
-  // 增量更新：移除不存在的标记
-  const existingMarkers = container.querySelectorAll('.city-marker');
-  existingMarkers.forEach(marker => {
-    const cityName = marker.getAttribute('data-city');
-    if (!newMarkers.has(cityName)) {
-      marker.style.opacity = '0';
-      setTimeout(() => marker.remove(), 200);
-    }
-  });
-  
-  // 增量更新：添加新标记或更新现有标记
-  setTimeout(() => {
-    newMarkers.forEach((newMarker, cityName) => {
-      const existingMarker = container.querySelector(`[data-city="${cityName}"]`);
-      if (existingMarker) {
-        // 更新现有标记的样式（不重建DOM）
-        existingMarker.setAttribute('class', newMarker.getAttribute('class'));
-      } else {
-        // 添加新标记，带淡入效果
-        newMarker.style.opacity = '0';
-        container.appendChild(newMarker);
-        requestAnimationFrame(() => {
-          newMarker.style.transition = 'opacity 0.3s ease-in';
-          newMarker.style.opacity = '1';
-        });
+      
+      // 更新中心圆点颜色
+      const inner = existing.querySelector('.inner');
+      if (inner) {
+        inner.setAttribute('fill', hasWarning ? 'rgba(249,115,22,0.85)' : 'rgba(59,130,246,0.85)');
+        inner.setAttribute('stroke', hasWarning ? '#F97316' : '#3B82F6');
+        inner.setAttribute('stroke-width', isSelected ? 2.5 : 1.5);
       }
-    });
-  }, existingMarkers.length > 0 ? 200 : 0);
+      
+      // 更新文字颜色
+      const text = existing.querySelector('text');
+      if (text) {
+        text.setAttribute('fill', isSelected ? '#06B6D4' : '#E2E8F0');
+      }
+      
+      // 确保可见
+      if (existing.style.opacity !== '1') {
+        existing.style.transition = 'opacity 0.3s';
+        existing.style.opacity = '1';
+      }
+    } else {
+      // 3. 创建新标记（首次或从筛选恢复）
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', `city-marker ${hasWarning ? 'has-warning' : ''} ${isSelected ? 'selected' : ''}`);
+      g.setAttribute('data-city', cityName);
+      g.setAttribute('transform', `translate(${pos.sx}, ${pos.sy})`);
+      
+      // 外圈光晕
+      if (hasWarning) {
+        const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        glow.setAttribute('class', 'marker-glow');
+        glow.setAttribute('cx', 0);
+        glow.setAttribute('cy', 0);
+        glow.setAttribute('r', 0);
+        glow.setAttribute('fill', 'rgba(249,115,22,0.6)');
+        if (!isSelected) {
+          glow.innerHTML = `<animate attributeName="r" from="0" to="10" dur="3s" repeatCount="indefinite"/>
+                            <animate attributeName="opacity" from="0.5" to="0" dur="3s" repeatCount="indefinite"/>`;
+        } else {
+          glow.setAttribute('opacity', '0');
+        }
+        g.appendChild(glow);
+      }
+      
+      // 外圈圆环
+      const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      ring.setAttribute('class', 'marker-ring');
+      ring.setAttribute('cx', 0);
+      ring.setAttribute('cy', 0);
+      ring.setAttribute('r', size + 2);
+      ring.setAttribute('fill', 'rgba(59,130,246,0.15)');
+      ring.setAttribute('stroke', isSelected ? '#06B6D4' : (hasWarning ? 'rgba(249,115,22,0.7)' : 'rgba(59,130,246,0.5)'));
+      ring.setAttribute('stroke-width', isSelected ? 3 : 1.5);
+      g.appendChild(ring);
+      
+      // 中心圆点
+      const inner = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      inner.setAttribute('class', 'inner');
+      inner.setAttribute('cx', 0);
+      inner.setAttribute('cy', 0);
+      inner.setAttribute('r', size);
+      inner.setAttribute('fill', hasWarning ? 'rgba(249,115,22,0.85)' : 'rgba(59,130,246,0.85)');
+      inner.setAttribute('stroke', hasWarning ? '#F97316' : '#3B82F6');
+      inner.setAttribute('stroke-width', isSelected ? 2.5 : 1.5);
+      g.appendChild(inner);
+      
+      // 城市名称
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', 0);
+      text.setAttribute('y', size + 10);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('fill', isSelected ? '#06B6D4' : '#E2E8F0');
+      text.setAttribute('font-size', '8');
+      text.setAttribute('font-weight', '600');
+      text.textContent = cityName;
+      g.appendChild(text);
+      
+      // 鼠标事件
+      g.addEventListener('mouseenter', (e) => showTooltip(e, cityName));
+      g.addEventListener('mouseleave', hideTooltip);
+      g.addEventListener('click', () => toggleCitySelection(cityName));
+      
+      // 淡入显示
+      g.style.opacity = '0';
+      g.style.transition = 'opacity 0.3s';
+      container.appendChild(g);
+      requestAnimationFrame(() => { g.style.opacity = '1'; });
+    }
+  });
 }
 
 
@@ -1592,7 +1616,6 @@ function getHighRiskCount(cityName) {
 
 function renderCityList() {
   const container = document.getElementById('cityList');
-  container.innerHTML = '';
   
   const filteredCities = getFilteredCities();
   
@@ -1615,95 +1638,95 @@ function renderCityList() {
     return 0;
   });
   
+  // 构建新的HTML（离屏，不触发重绘）
+  let newHTML = '';
+  
   if (sortedCities.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-secondary);font-size:12px;text-align:center;padding:20px;">暂无符合条件的标的</div>';
-    return;
+    newHTML = '<div style="color:var(--text-secondary);font-size:12px;text-align:center;padding:20px;">暂无符合条件的标的</div>';
+  } else {
+    sortedCities.forEach((cityName) => {
+      const _cityWarningsForFilter = getAllWarningsForCity(cityName);
+      if (_cityWarningsForFilter.length === 0) return;
+      
+      const city = CITY_DATA[cityName];
+      const filteredProps = getFilteredProps(cityName);
+      if (filteredProps.length === 0) return;
+      
+      const allWarnings = getAllWarningsForCity(cityName);
+      const weather = cityWeatherData[city.qid] || {};
+      const forecast = cityForecastData[city.qid] || [];
+      const hasWarning = allWarnings.length > 0;
+      const isSevere = hasSevereWeather(cityName);
+      
+      const warningTags = allWarnings.map(w => 
+        `<span class="warning-badge ${getSeverityClass(w.severity)}" data-city-warning="${cityName}" style="cursor:pointer">${w.typeName || w.type} ${w.severity}</span>`
+      ).join('');
+      
+      const weatherText = weather.text || '--';
+      const weatherDisplay = isSevere ? `<span class="severe-weather">${weatherText} ⚠️</span>` : weatherText;
+      
+      let forecastSection = '';
+      if (forecast && forecast.length > 0 && isSevere) {
+        forecastSection = `<div class="forecast-section">
+          ${forecast.map((day, idx) => {
+            const dayNames = ['今天', '明天', '后天'];
+            return `<div class="forecast-day">
+              <span class="forecast-date">${dayNames[idx] || day.fxDate}</span>
+              <span class="forecast-icon">${getWeatherIcon(day.textDay)}</span>
+              <span class="forecast-text">${day.textDay}</span>
+              <span class="forecast-temp">${day.tempMin}° ~ ${day.tempMax}°</span>
+            </div>`;
+          }).join('')}
+        </div>`;
+      }
+      
+      newHTML += `
+        <div class="city-item ${hasWarning ? 'has-warning' : ''} ${isSevere ? 'has-severe' : ''} ${activeCity === cityName ? 'active' : ''}" data-city="${cityName}">
+          <div class="city-header">
+            <span class="city-name">
+              ${cityName}
+              ${getHighRiskCount(cityName) > 0 ? '<span class="high-risk-flag" title="台风高风险标的">🚩</span>' : ''}
+              <span class="city-count">${filteredProps.length}标的${getHighRiskCount(cityName) > 0 ? ' <span style="color:#e74c3c;font-size:11px;">(高风险' + getHighRiskCount(cityName) + ')</span>' : ''}</span>
+              ${warningTags}
+            </span>
+          </div>
+          <div class="city-weather">
+            <span>${weatherDisplay}</span>
+            <span class="temp">${weather.temp ? weather.temp + '°C' : '--'}</span>
+            <span>💨 ${weather.windSpeed || '--'} m/s</span>
+          </div>
+          ${forecastSection}
+          <div class="prop-list" data-city="${cityName}">
+            ${filteredProps.map((p, idx) => `
+              <div class="prop-item" data-idx="${idx}" style="${idx >= 5 ? 'display:none' : ''}">
+                <span class="prop-segment">[${p.segment}]</span> <span class="prop-org">[${p.org}]</span> ${isHighRiskProp(p.insured) ? '<span class="high-risk-flag" title="台风高风险标的">🚩</span>' : ''}${p.insured}
+                <br>&nbsp;&nbsp;&nbsp;📍 ${p.addr}
+                ${p.province ? '<br>&nbsp;&nbsp;&nbsp;🏷️ ' + p.province : ''}${p.policies ? '<br>&nbsp;&nbsp;&nbsp;📋 ' + p.policies.join(', ') : ''}
+              </div>
+            `).join('')}
+            ${filteredProps.length > 5 ? `<button class="expand-btn" onclick="toggleExpand(this, '${cityName}')">展开全部 ${filteredProps.length} 条 ↓</button>` : ''}
+          </div>
+        </div>
+      `;
+    });
   }
   
-  sortedCities.forEach((cityName) => {
-    // 显示有预警影响的城市（黄色及以上）
-    const _cityWarningsForFilter = getAllWarningsForCity(cityName);
-    if (_cityWarningsForFilter.length === 0) return;
+  // 只有内容真正变化时才替换DOM，避免无意义重绘
+  if (container._lastHTML !== newHTML) {
+    container._lastHTML = newHTML;
+    container.innerHTML = newHTML;
     
-    const city = CITY_DATA[cityName];
-    const filteredProps = getFilteredProps(cityName);
-    if (filteredProps.length === 0) return;
-    
-    const allWarnings = getAllWarningsForCity(cityName);
-    const weather = cityWeatherData[city.qid] || {};
-    const forecast = cityForecastData[city.qid] || [];
-    const hasWarning = allWarnings.length > 0;
-    const isSevere = hasSevereWeather(cityName);
-    
-    const item = document.createElement('div');
-    item.className = `city-item ${hasWarning ? 'has-warning' : ''} ${isSevere ? 'has-severe' : ''} ${activeCity === cityName ? 'active' : ''}`;
-    item.setAttribute('data-city', cityName);
-    
-    const warningTags = allWarnings.map(w => 
-      `<span class="warning-badge ${getSeverityClass(w.severity)}" data-city-warning="${cityName}" style="cursor:pointer">${w.typeName || w.type} ${w.severity}</span>`
-    ).join('');
-    
-    const weatherText = weather.text || '--';
-    const weatherDisplay = isSevere ? `<span class="severe-weather">${weatherText} ⚠️</span>` : weatherText;
-    
-    let forecastSection = '';
-    if (forecast && forecast.length > 0 && isSevere) {
-      forecastSection = `<div class="forecast-section">
-        ${forecast.map((day, idx) => {
-          const dayNames = ['今天', '明天', '后天'];
-          return `<div class="forecast-day">
-            <span class="forecast-date">${dayNames[idx] || day.fxDate}</span>
-            <span class="forecast-icon">${getWeatherIcon(day.textDay)}</span>
-            <span class="forecast-text">${day.textDay}</span>
-            <span class="forecast-temp">${day.tempMin}° ~ ${day.tempMax}°</span>
-          </div>`;
-        }).join('')}
-      </div>`;
-    }
-    
-    // 标的列表显示（默认只显示前5条）
-    const displayProps = filteredProps.slice(0, 5);
-    const hasMoreProps = filteredProps.length > 5;
-    
-    item.innerHTML = `
-      <div class="city-header">
-        <span class="city-name">
-          ${cityName}
-          ${getHighRiskCount(cityName) > 0 ? '<span class="high-risk-flag" title="台风高风险标的">🚩</span>' : ''}
-          <span class="city-count">${filteredProps.length}标的${getHighRiskCount(cityName) > 0 ? ' <span style="color:#e74c3c;font-size:11px;">(高风险' + getHighRiskCount(cityName) + ')</span>' : ''}</span>
-          ${warningTags}
-        </span>
-      </div>
-      <div class="city-weather">
-        <span>${weatherDisplay}</span>
-        <span class="temp">${weather.temp ? weather.temp + '°C' : '--'}</span>
-        <span>💨 ${weather.windSpeed || '--'} m/s</span>
-      </div>
-      ${forecastSection}
-      <div class="prop-list" data-city="${cityName}">
-        ${filteredProps.map((p, idx) => `
-          <div class="prop-item" data-idx="${idx}" style="${idx >= 5 ? 'display:none' : ''}">
-            <span class="prop-segment">[${p.segment}]</span> <span class="prop-org">[${p.org}]</span> ${isHighRiskProp(p.insured) ? '<span class="high-risk-flag" title="台风高风险标的">🚩</span>' : ''}${p.insured}
-            <br>&nbsp;&nbsp;&nbsp;📍 ${p.addr}
-            ${p.province ? '<br>&nbsp;&nbsp;&nbsp;🏷️ ' + p.province : ''}${p.policies ? '<br>&nbsp;&nbsp;&nbsp;📋 ' + p.policies.join(', ') : ''}
-          </div>
-        `).join('')}
-        ${hasMoreProps ? `<button class="expand-btn" onclick="toggleExpand(this, '${cityName}')">展开全部 ${filteredProps.length} 条 ↓</button>` : ''}
-      </div>
-    `;
-    
-    item.addEventListener('click', () => toggleProps(item));
-    
-    item.querySelectorAll('.warning-badge[data-city-warning]').forEach(badge => {
-      badge.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const warnCity = badge.getAttribute('data-city-warning');
-        showWarningDetail(warnCity, badge);
+    // 绑定事件
+    container.querySelectorAll('.city-item').forEach(item => {
+      item.addEventListener('click', () => toggleProps(item));
+      item.querySelectorAll('.warning-badge[data-city-warning]').forEach(badge => {
+        badge.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showWarningDetail(badge.getAttribute('data-city-warning'), badge);
+        });
       });
     });
-    
-    container.appendChild(item);
-  });
+  }
 }
 
 function toggleExpand(btn, cityName) {
